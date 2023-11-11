@@ -1,17 +1,9 @@
-#ifdef __USE_CMSIS
-#include "lpc17xx.h"
-#endif
-#include <cr_section_macros.h>
-#include <stdio.h>
-#include "lpc17xx_clkpwr.h"
 #include "lpc17xx_pinsel.h"
-#include "lpc17xx_exti.h"
-#include "lpc17xx_gpio.h"
-#include "lpc17xx_timer.h"
-#include "lpc17xx_adc.h"
-#include "lpc17xx_uart.h"
 #include "lpc17xx_gpdma.h"
-#include "string.h"
+#include "lpc17xx_adc.h"
+#include "lpc17xx_pwm.h"
+#include "lpc17xx.h"
+#include "lpc17xx_clkpwr.h"
 
 /*
  *     	ADC: medimos 6 potenciometros y un sensor de distancia
@@ -29,9 +21,9 @@
  */
 
 /*
-    EINT0 - controlamos modos 
+    EINT0 - controlamos modos
    Modo 0 controlado manualmente
-   Modo 1 mediante EINT1 ejecuta el movimiento y por DMA manda al DAC una señal de audio por 10 seg 
+   Modo 1 mediante EINT1 ejecuta el movimiento y por DMA manda al DAC una señal de audio por 10 seg
 
 */
 
@@ -43,7 +35,7 @@
 void configPin(void);
 void configPWM(void);
 void configADC(void);
-void servo_write(uint8_t servo_number, uint32_t value);
+void servo_write(uint8_t servo_number, float value);
 void configEINT0(void);
 
 // Variables globales para ver las conversiones de ADC
@@ -56,13 +48,14 @@ uint32_t AD6Value = 0;
 
 int main(void)
 {
-    SystemInit();
+//    SystemInit();
     configPin();
     configPWM();
     configADC();
 
     while (1)
     {
+
         // LPC_PWM1->LER = (1<<1) | (1<<0) | (1<<2) | (1<<3) | (1<<4) | (1<<5) | (1<<6);
     }
     return 0;
@@ -188,37 +181,41 @@ void ADC_IRQHandler(void)
     {
         AD0Value = ADC_ChannelGetData(LPC_ADC, 0);
         value_volt = (AD0Value / 4096) * 3.3;
-        servo_write(1, value_volt);
+        //servo_write(1, value_volt);
+        //uint32_t constante = 303;
+        //uint32_t convertido = (uint32_t)(value_volt * constante + 1000);
+        //LPC_PWM1->MR1 = 0;
+        LPC_PWM1 -> MR1 = (uint32_t)((AD0Value/1.7)+700);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 1, 1))
     {
-        AD1Value = ADC_ChannelGetData(LPC_ADC, 0);
+        AD1Value = ADC_ChannelGetData(LPC_ADC, 1);
         value_volt = (AD1Value / 4096) * 3.3;
-        servo_write(2, value_volt);
+        LPC_PWM1 -> MR2 = (uint32_t)((AD1Value/1.9)+800);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 2, 1))
     {
-        AD2Value = ADC_ChannelGetData(LPC_ADC, 0);
+        AD2Value = ADC_ChannelGetData(LPC_ADC, 2);
         value_volt = (AD2Value / 4096) * 3.3;
-        servo_write(3, value_volt);
+        LPC_PWM1 -> MR3 = (uint32_t)((AD2Value/1.6)+900);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 4, 1))
     {
-        AD4Value = ADC_ChannelGetData(LPC_ADC, 0);
+        AD4Value = ADC_ChannelGetData(LPC_ADC, 4);
         value_volt = (AD4Value / 4096) * 3.3;
-        servo_write(4, value_volt);
+        LPC_PWM1 -> MR4 = 1600;
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 5, 1))
     {
-        AD5Value = ADC_ChannelGetData(LPC_ADC, 0);
+        AD5Value = ADC_ChannelGetData(LPC_ADC, 5);
         value_volt = (AD5Value / 4096) * 3.3;
-        servo_write(5, value_volt);
+        LPC_PWM1 -> MR5 = (uint32_t)((AD5Value/2.4)+740);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 6, 1))
     {
-        AD6Value = ADC_ChannelGetData(LPC_ADC, 0);
+        AD6Value = ADC_ChannelGetData(LPC_ADC, 6);
         value_volt = (AD6Value / 4096) * 3.3;
-        servo_write(6, value_volt);
+        LPC_PWM1 -> MR6 = (uint32_t)((AD6Value/2.04)+1800);
     }
 
     /*if (LPC_ADC->ADSTAT & (1 << 0))
@@ -242,6 +239,7 @@ void ADC_IRQHandler(void)
     ADC0Value = ((LPC_ADC->ADDR0) >> 4) & 0xFFF; // Variable auxiliar para observar el valor del registro de captura
     */
 
+    LPC_PWM1->LER = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
     return;
 }
 
@@ -273,6 +271,7 @@ void servo_write(uint8_t servo_number, float value)
     default:
         break;
     }
-    LPC_PWM1->LER = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
+    LPC_PWM1->LER = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
+
     return;
 }
