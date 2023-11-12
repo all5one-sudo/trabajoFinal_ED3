@@ -4,6 +4,9 @@
 #include "lpc17xx_pwm.h"
 #include "lpc17xx.h"
 #include "lpc17xx_clkpwr.h"
+#include "lpc17xx_uart.h"
+#include "lpc17xx_exti.h"
+#include <stdio.h>
 
 /*
  *     	ADC: medimos 6 potenciometros y un sensor de distancia
@@ -35,8 +38,10 @@
 void configPin(void);
 void configPWM(void);
 void configADC(void);
+void configUART(void);
 void servo_write(uint8_t servo_number, float value);
 void configEINT0(void);
+void homeState(void);
 
 // Variables globales para ver las conversiones de ADC
 uint32_t AD0Value = 0;
@@ -45,20 +50,52 @@ uint32_t AD2Value = 0;
 uint32_t AD4Value = 0;
 uint32_t AD5Value = 0;
 uint32_t AD6Value = 0;
+uint32_t pwmCount1;
+uint32_t pwmCount2;
+uint32_t pwmCount3;
+uint32_t pwmCount4;
+uint32_t pwmCount5;
+uint32_t pwmCount6;
 
 int main(void)
 {
-//    SystemInit();
     configPin();
     configPWM();
+    homeState();
     configADC();
-
-    while (1)
-    {
-
-        // LPC_PWM1->LER = (1<<1) | (1<<0) | (1<<2) | (1<<3) | (1<<4) | (1<<5) | (1<<6);
-    }
+    while (1);
     return 0;
+}
+
+
+void homeState(void) {
+    // Home State del Robot
+    NVIC_EnableIRQ(ADC_IRQn);
+    LPC_PWM1 -> MR1 = 1850;
+    LPC_PWM1 -> MR2 = 1850;
+    LPC_PWM1 -> MR3 = 2500;
+    LPC_PWM1 -> MR4 = 1600;
+    LPC_PWM1 -> MR5 = 1220;
+    LPC_PWM1 -> MR6 = 1800;
+    LPC_PWM1->LER = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
+    return;
+}
+
+void configUART(void) {
+    PINSEL_CFG_Type UART_pins_config;
+    UART_pins_config.Portnum = 0;
+    UART_pins_config.Pinnum = 2;
+    UART_pins_config.Funcnum = 1;
+    UART_pins_config.Pinmode = PINSEL_PINMODE_TRISTATE;
+    UART_pins_config.OpenDrain = PINSEL_PINMODE_NORMAL;
+    PINSEL_ConfigPin(&UART_pins_config);
+    UART_CFG_Type UART_config;
+    UART_FIFO_CFG_Type UART_fifo_config;
+    UART_ConfigStructInit(&UART_config);
+    UART_Init(LPC_UART0, &UART_config);
+    UART_FIFOConfigStructInit(&UART_fifo_config);
+    UART_FIFOConfig(LPC_UART0, &UART_fifo_config);
+    UART_TxCmd(LPC_UART0, ENABLE);
 }
 
 void configPin(void)
@@ -74,6 +111,7 @@ void configPin(void)
         PWM_pins_config.Pinnum = i;
         PINSEL_ConfigPin(&PWM_pins_config);
     }
+    return;
 }
 
 void configPWM(void)
@@ -82,23 +120,19 @@ void configPWM(void)
     CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_PWM1, CLKPWR_PCLKSEL_CCLK_DIV_1);
     LPC_PWM1->PCR = 0x0; // Single edge PWM para 6 CH
     LPC_PWM1->PR = 99;
-
-    LPC_PWM1->MR0 = 20000; //
-
-    // LPC_PWM1->MR1 = 1000; //1ms - default pulse duration - servo at 0 degrees
-    LPC_PWM1->MR1 = 1300; // 1ms - default pulse duration - servo at 0 degrees
-    LPC_PWM1->MR2 = 1500; // 1ms - default pulse duration - servo at 0 degrees
-    LPC_PWM1->MR3 = 1400; // 1ms - default pulse duration - servo at 0 degrees
-    LPC_PWM1->MR4 = 1500; // 1ms - default pulse duration - servo at 0 degrees
-    LPC_PWM1->MR5 = 1500; // 1ms - default pulse duration - servo at 0 degrees
-    LPC_PWM1->MR6 = 1500;
+    LPC_PWM1->MR0 = 20000; 
+    LPC_PWM1->MR1 = 1850; 
+    LPC_PWM1->MR2 = 1850; 
+    LPC_PWM1->MR3 = 2500; 
+    LPC_PWM1->MR4 = 1600; 
+    LPC_PWM1->MR5 = 1220; 
+    LPC_PWM1->MR6 = 1800;
     LPC_PWM1->MCR = (1 << 1);                                                                   // Reset PWM TC on PWM1MR0 match
     LPC_PWM1->LER = (1 << 1) | (1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6); // update values in MR0 and MR1
     LPC_PWM1->PCR = (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14);       // enable PWM outputs
     LPC_PWM1->TCR = 3;                                                                          // Reset PWM TC & PR
     LPC_PWM1->TCR &= ~(1 << 1);                                                                 // libera la cuenta
     LPC_PWM1->TCR |= (1 << 3);                                                                  // enable counters and PWM Mode
-    // LPC_PWM1 -> MR1 = 2000;
 }
 
 void configADC(void)
@@ -180,64 +214,63 @@ void ADC_IRQHandler(void)
     if (ADC_ChannelGetStatus(LPC_ADC, 0, 1))
     {
         AD0Value = ADC_ChannelGetData(LPC_ADC, 0);
-        value_volt = (AD0Value / 4096) * 3.3;
-        //servo_write(1, value_volt);
-        //uint32_t constante = 303;
-        //uint32_t convertido = (uint32_t)(value_volt * constante + 1000);
-        //LPC_PWM1->MR1 = 0;
-        LPC_PWM1 -> MR1 = (uint32_t)((AD0Value/1.7)+700);
+        pwmCount1 = (uint32_t)((AD0Value / 1.7) + 700);
+        // LPC_PWM1 -> MR1 = (uint32_t)((AD0Value/1.7)+700);
+        LPC_PWM1->MR1 = pwmCount1;
+        char buffer[32];
+        sprintf(buffer, "A%d\r\n", pwmCount1);
+        UART_Send(LPC_UART0, (uint8_t *)buffer, strlen(buffer), BLOCKING);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 1, 1))
     {
         AD1Value = ADC_ChannelGetData(LPC_ADC, 1);
-        value_volt = (AD1Value / 4096) * 3.3;
-        LPC_PWM1 -> MR2 = (uint32_t)((AD1Value/1.9)+800);
+        pwmCount2 = (uint32_t)((AD1Value / 1.9) + 800);
+        LPC_PWM1->MR2 = pwmCount2;
+        char buffer[32];
+        sprintf(buffer, "B%d\r\n", pwmCount2);
+        UART_Send(LPC_UART0, (uint8_t *)buffer, strlen(buffer), BLOCKING);
+        // LPC_PWM1 -> MR2 = (uint32_t)((AD1Value/1.9)+800);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 2, 1))
     {
         AD2Value = ADC_ChannelGetData(LPC_ADC, 2);
-        value_volt = (AD2Value / 4096) * 3.3;
-        LPC_PWM1 -> MR3 = (uint32_t)((AD2Value/1.6)+900);
+        pwmCount3 = (uint32_t)((AD2Value / 1.6) + 900);
+        LPC_PWM1->MR3 = pwmCount3;
+        char buffer[32];
+        sprintf(buffer, "C%d\r\n", pwmCount3);
+        UART_Send(LPC_UART0, (uint8_t *)buffer, strlen(buffer), BLOCKING);
+        // LPC_PWM1 -> MR3 = (uint32_t)((AD2Value/1.6)+900);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 4, 1))
     {
         AD4Value = ADC_ChannelGetData(LPC_ADC, 4);
-        value_volt = (AD4Value / 4096) * 3.3;
-        LPC_PWM1 -> MR4 = 1600;
+        pwmCount4 = (uint32_t)((AD4Value / 1.6) + 1400);
+        LPC_PWM1->MR4 = pwmCount4;
+        char buffer[32];
+        sprintf(buffer, "D%d\r\n", pwmCount4);
+        UART_Send(LPC_UART0, (uint8_t *)buffer, strlen(buffer), BLOCKING);
+        // LPC_PWM1 -> MR4 = 1600;
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 5, 1))
     {
         AD5Value = ADC_ChannelGetData(LPC_ADC, 5);
-        value_volt = (AD5Value / 4096) * 3.3;
-        LPC_PWM1 -> MR5 = (uint32_t)((AD5Value/2.4)+740);
+        pwmCount5 = (uint32_t)((AD5Value / 2.4) + 740);
+        LPC_PWM1->MR5 = pwmCount5;
+        char buffer[32];
+        sprintf(buffer, "E%d\r\n", pwmCount5);
+        UART_Send(LPC_UART0, (uint8_t *)buffer, strlen(buffer), BLOCKING);
+        // LPC_PWM1 -> MR5 = (uint32_t)((AD5Value/2.4)+740);
     }
     else if (ADC_ChannelGetStatus(LPC_ADC, 6, 1))
     {
         AD6Value = ADC_ChannelGetData(LPC_ADC, 6);
-        value_volt = (AD6Value / 4096) * 3.3;
-        LPC_PWM1 -> MR6 = (uint32_t)((AD6Value/2.04)+1800);
+        pwmCount6 = (uint32_t)((AD6Value / 2.04) + 1800);
+        LPC_PWM1->MR6 = pwmCount6;
+        char buffer[32];
+        sprintf(buffer, "F%d\r\n", pwmCount6);
+        UART_Send(LPC_UART0, (uint8_t *)buffer, strlen(buffer), BLOCKING);
+        // LPC_PWM1 -> MR6 = (uint32_t)((AD6Value/2.04)+1800);
     }
-
-    /*if (LPC_ADC->ADSTAT & (1 << 0))
-    {
-        uint16_t adcValue = ((LPC_ADC->ADDR0)>>4) & 0xFFF;
-        volt = (ADC0Value/4096)*3.3;
-        servo_write(0, volt);
-    }
-    else if (LPC_ADC->ADSTAT & (1 << 1))
-    {
-        uint16_t adcValue = ((LPC_ADC->ADDR1)>>4) & 0xFFF;
-        volt = (ADC0Value/4096)*3.3;
-        servo_write(0, volt);
-    }
-    else if (LPC_ADC->ADSTAT & (1 << 2))
-    {
-        uint16_t adcValue = ((LPC_ADC->ADDR2)>>4) & 0xFFF;
-        volt = (ADC0Value/4096)*3.3;
-        servo_write(0, volt);
-    }
-    ADC0Value = ((LPC_ADC->ADDR0) >> 4) & 0xFFF; // Variable auxiliar para observar el valor del registro de captura
-    */
 
     LPC_PWM1->LER = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);
     return;
